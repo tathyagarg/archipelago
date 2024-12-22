@@ -27,9 +27,9 @@ else:
 
 cache: dict[str, User] = {}  # For loading
 
-def load_messages(left: int, oldest: int = 0, cursor: str | None = None) -> Generator[list[dict], None, None]:
+def load_messages(left: int, oldest: int = 0, cursor: str | None = None) -> Generator[list[dict], None, list]:
     print(f'Loading {left} messages')
-    if left <= 0: yield []
+    if left <= 0: return []
 
     # The converstaions_history API has a limit of 999 messages per call
     remainder = 0
@@ -51,6 +51,8 @@ def load_messages(left: int, oldest: int = 0, cursor: str | None = None) -> Gene
             left = remainder + left - len(usable),
             cursor = result['response_metadata']['next_cursor']
         )
+    else:
+        return []
 
 def make_ship(ship: dict) -> Generator[tuple[str, str | Ship], Ship | None, None]:
     ship_text = ship['blocks'][0]['text']['text']

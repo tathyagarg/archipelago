@@ -14,7 +14,7 @@ mongo_client = None
 user_data = {}
 
 INTERVAL = 60 * 30  # 30 minutes
-LOAD_DATA =True 
+LOAD_DATA = False
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -50,3 +50,11 @@ async def update_data():
 async def get_user_data(user_id: str):
     # [1:] is used to remove the 'U' prefix
     return user_data[user_id[1:]].model_dump()
+
+@app.get('/force-cleanup')
+async def force_cleanup(password: str):
+    if password == os.getenv('MONGO_PASSWORD'):
+        cleanup(mongo_client)
+        return {'ok': True}
+
+    return {'ok': False, 'error': 'Invalid password'}

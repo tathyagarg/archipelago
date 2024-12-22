@@ -91,8 +91,9 @@ def cleanup(client, affected: Iterable[User] | None = None):
     users = load_from_database(client)
     new_users = []
     length = len(users)
+    target = affected or users
 
-    for i, user in enumerate(list(*affected)):
+    for i, user in enumerate(target):
         seen_ships = {}
         for ship in user.ships:
             if ship.name not in seen_ships:
@@ -100,6 +101,8 @@ def cleanup(client, affected: Iterable[User] | None = None):
             else:
                 for name, seen_ship in seen_ships.items():
                     if name == ship.name:
+                        if len(ship.updates) == 0:
+                            break
                         seen_ship.hours += ship.hours
                         seen_ship.updates += ship.updates
                         break
