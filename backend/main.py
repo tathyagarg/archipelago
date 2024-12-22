@@ -2,30 +2,10 @@ import os
 import re
 
 import dotenv
-from pydantic import BaseModel
+# I know what's entering the namespace so it's fine to use wildcard import
+from models import *
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
-
-
-class Update(BaseModel):
-    description: str
-    hours: int
-
-class Ship(BaseModel):
-    name: str
-
-    # URLs
-    repo: str
-    demo: str
-    preview: str
-
-    hours: int
-    updates: list[Update] = []
-
-class User(BaseModel):
-    id: str  # Slack User ID 
-    name: str
-    ships: list[Ship] = []
 
 dotenv.load_dotenv(override=True)
 
@@ -119,6 +99,13 @@ def make_ship(ship: dict) -> Ship:
                 updates = [Update(description=description, hours=hours)] + original_ship.updates
             ))
 
+def get_username(user_id: str) -> str:
+    try:
+        result = client.users_profile_get(user='U' + user_id)
+        return result['profile']['display_name']
+    except SlackApiError as e:
+        print(e)
+
 result = load_messages(LIMIT)
 for ship_message in result:
     ship_gen = make_ship(ship_message)
@@ -130,12 +117,12 @@ for ship_message in result:
         _, ship = ship_gen.send(original_ship)
 
         if user_id not in cache:
-            cache[user_id] = {}
-        cache[user_id][ship_name] = ship
+            cache[user_id] = User(id=user_id, name=get_username(user_id), ships=[])
+        cache[user_id].ships.append(ship)
     else:
         user_id, ship = ship_data
         if user_id not in cache:
-            cache[user_id] = {}
-        cache[user_id][ship.name] = ship
+            cache[user_id] = User(id=user_id, name=get_username(user_id), ships=[])
+        cache[user_id].ships.append(ship)
 
 print(cache)
