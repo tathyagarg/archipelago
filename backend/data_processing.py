@@ -158,6 +158,9 @@ def startup(mongo_client):
             handle_new_data(mongo_client, cache.values())
             cache = {}
 
+def auth_user(code: str):
+    return client.openid_connect_token(code=code)
+
 if __name__ == '__main__':
     mongo_client = connect(os.getenv("MONGO_CONN", ''), os.getenv("MONGO_PASSWORD", ''))
     # startup(mongo_client)

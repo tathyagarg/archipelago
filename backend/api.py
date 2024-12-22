@@ -6,6 +6,7 @@ import data_processing
 import dotenv
 from database import cleanup, connect, load_from_database
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 from fastapi_utils.tasks import repeat_every
 
 dotenv.load_dotenv()
@@ -58,3 +59,8 @@ async def force_cleanup(password: str):
         return {'ok': True}
 
     return {'ok': False, 'error': 'Invalid password'}
+
+@app.get('/auth')
+async def auth_user(code: str):
+    data = data_processing.auth_user(code)
+    return RedirectResponse(f'https://archipelago.tathya.hackclub.app?tok={data["id_token"]}')
