@@ -3,7 +3,7 @@
 Database Structure:
 ```
 User: {
-  id: String,
+  id: Integer,
   username: String,
   ships: [Ship]
 }
@@ -14,7 +14,7 @@ Ship: {
   demo: URL,
   preview: URL,
   hours: Number,
-  updates: [String],
+  updates: [(String, Integer)],
 }
 ```
 
