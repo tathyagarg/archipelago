@@ -53,12 +53,12 @@ def hard_update(client, user_id: str, ships: list[Ship], session=None):
 def big_update(client, user_ids: list[str], shipses: list[list[Ship]]):
     with client.start_session() as session:
         try:
-            for user_id, ships in zip(user_ids, shipses):
-                session.with_transaction(
-                    lambda session: update_database(
-                        client, user_id, ships, session=session
-                    )
-                )
+            session.with_transaction(
+                lambda session: [
+                    update_database(client, user_id, ships, session=session)
+                    for user_id, ships in zip(user_ids, shipses)
+                ]
+            )
         except Exception as e:
             raise Exception("Big update failed") from e
 
@@ -111,11 +111,13 @@ def cleanup(client, affected: Iterable[User] | None = None):
         user.ships = list(seen_ships.values())
         new_users.append(user)
 
-    with client.start_session() as session:
+    def updates(_client, session):
         for i, user in enumerate(new_users):
-            print("Cleaned up {}/{}".format(i + 1, length), end="\r")
-            session.with_transaction(
-                lambda session: hard_update(
-                    client, user.id, user.ships, session=session
-                )
-            )
+            print("Cleaned up {}/{}".format(i + 1, length))
+            hard_update(_client, user.id, user.ships, session=session)
+
+    with client.start_session() as session:
+        updates(
+            client,
+            session=session,
+        )

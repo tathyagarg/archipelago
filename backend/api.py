@@ -48,9 +48,8 @@ async def update_data():
         10000, oldest=int(time.time()) - INTERVAL
     ):
         data_processing.load(chunk, None, new_users)
+        data_processing.handle_new_data(mongo_client, new_users.values())
 
-    print(*new_users.values(), sep="\n")
-    data_processing.handle_new_data(mongo_client, new_users.values())
     cleanup(mongo_client, new_users.values())
 
 
