@@ -87,26 +87,24 @@ def handle_new_data(client, data: Iterable[User]):
         add_to_database(client, new_users)
 
 
-def cleanup(client):
+def cleanup(client, affected: Iterable[User] | None = None):
     users = load_from_database(client)
     new_users = []
     length = len(users)
 
-    for i, user in enumerate(users):
-        ships = []
-        seen_names = set()
+    for i, user in enumerate(list(*affected)):
+        seen_ships = {}
         for ship in user.ships:
-            if ship.name not in seen_names:
-                ships.append(ship)
-                seen_names.add(ship.name)
+            if ship.name not in seen_ships:
+                seen_ships[ship.name] = ship
             else:
-                for seen_ship in ships:
-                    if seen_ship.name == ship.name:
+                for name, seen_ship in seen_ships.items():
+                    if name == ship.name:
                         seen_ship.hours += ship.hours
                         seen_ship.updates += ship.updates
                         break
 
-        user.ships = ships
+        user.ships = list(seen_ships.values())
         new_users.append(user)
 
     with client.start_session() as session:

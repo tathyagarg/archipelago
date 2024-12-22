@@ -7,7 +7,6 @@ import dotenv
 from database import *
 from models import *
 from slack_sdk import WebClient
-from slack_sdk.errors import SlackApiError
 
 dotenv.load_dotenv(override=True)
 
@@ -26,19 +25,19 @@ else:
     CHANNEL = 'C07UA18MXBJ'
     LIMIT = 5000 
 
-cache: dict[str, User] = {}  # This will be a redis cache
+cache: dict[str, User] = {}  # For loading
 
-def load_messages(left: int, cursor: str | None = None) -> Generator[list[dict], None, None]:
+def load_messages(left: int, oldest: int = 0, cursor: str | None = None) -> Generator[list[dict], None, None]:
     print(f'Loading {left} messages')
     if left <= 0: yield []
 
-    # The converstaions_history API has a limit of 100 messages per call
+    # The converstaions_history API has a limit of 999 messages per call
     remainder = 0
-    if left > 100:
-        remainder = left - 100
-        left = 100
+    if left > 999:
+        remainder = left - 999 
+        left = 999
 
-    result = client.conversations_history(channel=CHANNEL, limit=left, cursor=cursor)
+    result = client.conversations_history(channel=CHANNEL, oldest=oldest, limit=left, cursor=cursor)
 
     # To filter out messages from people other than Arrpheus
     usable = []
@@ -47,10 +46,11 @@ def load_messages(left: int, cursor: str | None = None) -> Generator[list[dict],
             usable.append(message)
 
     yield usable
-    yield from load_messages(
-        left = remainder + left - len(usable),
-        cursor = result['response_metadata']['next_cursor']
-    )
+    if len(usable) != 0:
+        yield from load_messages(
+            left = remainder + left - len(usable),
+            cursor = result['response_metadata']['next_cursor']
+        )
 
 def make_ship(ship: dict) -> Generator[tuple[str, str | Ship], Ship | None, None]:
     ship_text = ship['blocks'][0]['text']['text']
@@ -77,7 +77,7 @@ def make_ship(ship: dict) -> Generator[tuple[str, str | Ship], Ship | None, None
             hours = hours
         ))
     else:
-        ship_name, _, update_no, user_id, repo, demo, hours, _, total_hours, description = groups
+        ship_name, _, _, user_id, repo, demo, hours, _, _, description = groups
         description = description or ''
         hours = int(hours)
 
@@ -109,7 +109,7 @@ def get_username(user_id: str) -> str:
     result = client.users_profile_get(user='U' + user_id)
     return result['profile']['display_name']
 
-def load(data, log_buf):
+def load(data, log_buf, cache):
     for i, ship_message in enumerate(data):
         print(f'Loading ship {i + 1}/{len(data)}', end='\r')
         try:
@@ -121,7 +121,11 @@ def load(data, log_buf):
     
         if isinstance(ship_data[1], str):
             user_id, ship_name = ship_data
-            user_ships = cache.get(user_id, User(id=user_id, name=get_username(user_id), ships=[])).ships
+            user = cache.get(user_id, None)
+            if user is None:
+                user = User(id=user_id, name=get_username(user_id), ships=[])
+
+            user_ships = user.ships
 
             original_ship = None
             for ship in user_ships:
@@ -148,7 +152,7 @@ def startup(mongo_client):
     global cache
     with open('logs', 'a') as log_buf:
         for chunk in load_messages(LIMIT):
-            load(chunk, log_buf)
+            load(chunk, log_buf, cache)
             handle_new_data(mongo_client, cache.values())
             cache = {}
 
