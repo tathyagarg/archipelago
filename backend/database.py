@@ -7,47 +7,48 @@ from pymongo import MongoClient
 def connect(conn: str, password: str):
     try:
         client = MongoClient(conn.format(db_password=password))
-        client.admin.command('ping')
+        client.admin.command("ping")
 
         return client
     except Exception as e:
-        raise Exception("Could not connect to MongoDB") from e 
+        raise Exception("Could not connect to MongoDB") from e
 
-def add_to_database(client, users: list[User], session = None):
-    db = client['archipelago']
-    collection = db['users']
 
-    collection.insert_many([
-        user.model_dump() for user in users
-    ], session=session)
+def add_to_database(client, users: list[User], session=None):
+    db = client["archipelago"]
+    collection = db["users"]
+
+    collection.insert_many([user.model_dump() for user in users], session=session)
+
 
 def load_from_database(client) -> list[User]:
-    db = client['archipelago']
-    collection = db['users']
+    db = client["archipelago"]
+    collection = db["users"]
 
     return [User(**user) for user in collection.find()]
 
-def update_database(client, user_id: str, ships: list[Ship], session = None):
-    db = client['archipelago']
-    collection = db['users']
+
+def update_database(client, user_id: str, ships: list[Ship], session=None):
+    db = client["archipelago"]
+    collection = db["users"]
 
     update_operation = {
-        '$push': {'ships': {'$each': [ship.model_dump() for ship in ships]}}
+        "$push": {"ships": {"$each": [ship.model_dump() for ship in ships]}}
     }
-    filter = {'id': user_id}
+    filter = {"id": user_id}
 
     collection.update_one(filter, update_operation, session=session)
 
-def hard_update(client, user_id: str, ships: list[Ship], session = None):
-    db = client['archipelago']
-    collection = db['users']
 
-    update_operation = {
-        '$set': {'ships': [ship.model_dump() for ship in ships]}
-    }
-    filter = {'id': user_id}
+def hard_update(client, user_id: str, ships: list[Ship], session=None):
+    db = client["archipelago"]
+    collection = db["users"]
+
+    update_operation = {"$set": {"ships": [ship.model_dump() for ship in ships]}}
+    filter = {"id": user_id}
 
     collection.update_one(filter, update_operation, session=session)
+
 
 def big_update(client, user_ids: list[str], shipses: list[list[Ship]]):
     with client.start_session() as session:
@@ -55,10 +56,7 @@ def big_update(client, user_ids: list[str], shipses: list[list[Ship]]):
             for user_id, ships in zip(user_ids, shipses):
                 session.with_transaction(
                     lambda session: update_database(
-                        client,
-                        user_id,
-                        ships,
-                        session=session
+                        client, user_id, ships, session=session
                     )
                 )
         except Exception as e:
@@ -81,6 +79,9 @@ def handle_new_data(client, data: Iterable[User]):
         else:
             new_users.append(user)
 
+    print("New users:", new_users)
+    print("Update users:", update_user_ids)
+    print("Update ships:", update_user_ships)
     if update_user_ids:
         big_update(client, update_user_ids, update_user_ships)
     if new_users:
@@ -112,12 +113,9 @@ def cleanup(client, affected: Iterable[User] | None = None):
 
     with client.start_session() as session:
         for i, user in enumerate(new_users):
-            print('Cleaned up {}/{}'.format(i + 1, length), end='\r')
+            print("Cleaned up {}/{}".format(i + 1, length), end="\r")
             session.with_transaction(
                 lambda session: hard_update(
-                    client,
-                    user.id,
-                    user.ships,
-                    session=session
+                    client, user.id, user.ships, session=session
                 )
             )
