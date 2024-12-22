@@ -2,9 +2,9 @@
 
 # Thank you Cyteon!
 
-APP_NAME = "archipelago"
-DEFAULT_PORT = 41965
-PORT = ${1:-$DEFAULT_PORT}
+APP_NAME="archipelago"
+DEFAULT_PORT=41965
+PORT=${1:-$DEFAULT_PORT}
 
 echo "Starting $APP_NAME on port $PORT"
 
