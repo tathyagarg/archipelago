@@ -1,8 +1,10 @@
 import os
 import re
+from typing import Generator
 
 import dotenv
 # I know what's entering the namespace so it's fine to use wildcard import
+from database import *
 from models import *
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
@@ -12,44 +14,45 @@ dotenv.load_dotenv(override=True)
 ARRPHEUS = 'U07NGBJUDRD'
 
 TOKEN = os.getenv("SLACK_TOKEN")
-DEBUG = int(os.getenv("DEBUG"))
+DEBUG = int(os.getenv("DEBUG", '1'))
 
 client = WebClient(token=TOKEN)
+
+#ifdef ahh
 if DEBUG:
     CHANNEL = 'C086HKQFLHF'
     LIMIT = 2
 else:
     CHANNEL = 'C07UA18MXBJ'
-    LIMIT = 5 
+    LIMIT = 5000 
 
-cache = {}  # This will be a redis cache
+cache: dict[str, User] = {}  # This will be a redis cache
 
-def load_messages(left: int, cursor: str = None):
-    if left == 0: return []
+def load_messages(left: int, cursor: str | None = None) -> Generator[list[dict], None, None]:
+    print(f'Loading {left} messages')
+    if left <= 0: yield []
 
-    try:
-        # The converstaions_history API has a limit of 100 messages per call
-        remainder = 0
-        if left > 100:
-            remainder = left - 100
-            left = 100
+    # The converstaions_history API has a limit of 100 messages per call
+    remainder = 0
+    if left > 100:
+        remainder = left - 100
+        left = 100
 
-        result = client.conversations_history(channel=CHANNEL, limit=left, cursor=cursor)
+    result = client.conversations_history(channel=CHANNEL, limit=left, cursor=cursor)
 
-        # To filter out messages from people other than Arrpheus
-        usable = []
-        for message in result['messages']:
-            if message['user'] == ARRPHEUS:
-                usable.append(message)
+    # To filter out messages from people other than Arrpheus
+    usable = []
+    for message in result['messages']:
+        if message['user'] == ARRPHEUS:
+            usable.append(message)
 
-        return usable + load_messages(
-            left = remainder + left - len(usable),
-            cursor = result['response_metadata']['next_cursor']
-        )
-    except SlackApiError as e:
-        print(e)
+    yield usable
+    yield from load_messages(
+        left = remainder + left - len(usable),
+        cursor = result['response_metadata']['next_cursor']
+    )
 
-def make_ship(ship: dict) -> Ship:
+def make_ship(ship: dict) -> Generator[tuple[str, str | Ship], Ship | None, None]:
     ship_text = ship['blocks'][0]['text']['text']
     ship_img = ship['blocks'][1]['image_url']
 
@@ -57,7 +60,8 @@ def make_ship(ship: dict) -> Ship:
         r'\*(.+)\*( _\(Update (\d+)\)_)?\nBy <\@U(\w+)> \| <(.+)\|Repo> \| <(.+)\|Demo>\nMade in (\d+) hours( _\((\d+) in total\)_\n\n_Update Description:_ (.+))?',
         ship_text
     )
-    print(repr(ship_text))
+    if not match:
+        raise ValueError(f"Invalid ship message: {ship_text}")
 
     groups = match.groups()
 
@@ -74,7 +78,7 @@ def make_ship(ship: dict) -> Ship:
         ))
     else:
         ship_name, _, update_no, user_id, repo, demo, hours, _, total_hours, description = groups
-        print(groups)
+        description = description or ''
         hours = int(hours)
 
         original_ship = yield (user_id, ship_name)
@@ -100,29 +104,55 @@ def make_ship(ship: dict) -> Ship:
             ))
 
 def get_username(user_id: str) -> str:
-    try:
-        result = client.users_profile_get(user='U' + user_id)
-        return result['profile']['display_name']
-    except SlackApiError as e:
-        print(e)
+    # `U + user_id` is the format Slack uses
+    # Since we know all the user_ids will be for users, we can skip storing the first letter (U).
+    result = client.users_profile_get(user='U' + user_id)
+    return result['profile']['display_name']
 
-result = load_messages(LIMIT)
-for ship_message in result:
-    ship_gen = make_ship(ship_message)
-    ship_data = next(ship_gen)
+def load(data, log_buf):
+    for i, ship_message in enumerate(data):
+        print(f'Loading ship {i + 1}/{len(data)}', end='\r')
+        try:
+            ship_gen = make_ship(ship_message)
+            ship_data = next(ship_gen)
+        except ValueError:
+            log_buf.write(f"Invalid ship message: {ship_message['blocks'][0]['text']['text']}\n")
+            continue
+    
+        if isinstance(ship_data[1], str):
+            user_id, ship_name = ship_data
+            user_ships = cache.get(user_id, User(id=user_id, name=get_username(user_id), ships=[])).ships
 
-    if isinstance(ship_data[1], str):
-        user_id, ship_name = ship_data
-        original_ship = cache.get(user_id, {}).get(ship_name)
-        _, ship = ship_gen.send(original_ship)
+            original_ship = None
+            for ship in user_ships:
+                if ship.name == ship_name:
+                    original_ship = ship
+                    break
 
-        if user_id not in cache:
-            cache[user_id] = User(id=user_id, name=get_username(user_id), ships=[])
-        cache[user_id].ships.append(ship)
-    else:
-        user_id, ship = ship_data
-        if user_id not in cache:
-            cache[user_id] = User(id=user_id, name=get_username(user_id), ships=[])
-        cache[user_id].ships.append(ship)
+            _, ship = ship_gen.send(original_ship)
+    
+            if user_id not in cache:
+                cache[user_id] = User(id=user_id, name=get_username(user_id), ships=[])
+            cache[user_id].ships.append(ship) # pyright: ignore
+        else:
+            user_id, ship = ship_data
 
-print(cache)
+            if user_id not in cache:
+                cache[user_id] = User(id=user_id, name=get_username(user_id), ships=[])
+            cache[user_id].ships.append(ship) # pyright: ignore
+
+    print()
+
+
+def startup(mongo_client):
+    global cache
+    with open('logs', 'a') as log_buf:
+        for chunk in load_messages(LIMIT):
+            load(chunk, log_buf)
+            handle_new_data(mongo_client, cache.values())
+            cache = {}
+
+if __name__ == '__main__':
+    mongo_client = connect(os.getenv("MONGO_CONN", ''), os.getenv("MONGO_PASSWORD", ''))
+    # startup(mongo_client)
+    cleanup(mongo_client)
