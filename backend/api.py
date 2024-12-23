@@ -8,6 +8,7 @@ from database import cleanup, connect, load_from_database
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 from fastapi_utils.tasks import repeat_every
+from utils import perlin
 
 dotenv.load_dotenv()
 
@@ -57,6 +58,12 @@ async def update_data():
 async def get_user_data(user_id: str):
     # [1:] is used to remove the 'U' prefix
     return user_data[user_id[1:]].model_dump()
+
+
+@app.get("/island")
+async def get_island_data(user_id: str):
+    # Slack user IDs are alnums, so we can decode them from base 36
+    return perlin.Perlin(seed=int(user_id[1:], 36)).island()
 
 
 @app.get("/force-cleanup")
