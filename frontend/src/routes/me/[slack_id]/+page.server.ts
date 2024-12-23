@@ -1,6 +1,8 @@
 import type { PageServerLoad } from './$types';
+import {config} from 'dotenv';
+config();
 
-const PROD = false;
+const PROD = parseInt(process.env.PROD);
 const USER_EP = PROD ? 'https://archipelago-api.tathya.hackclub.app/me' : 'http://localhost:8000/me';
 const ISLAND_EP = PROD ? 'https://archipelago-api.tathya.hackclub.app/island' : 'http://localhost:8000/island';
 
