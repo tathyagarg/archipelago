@@ -104,8 +104,9 @@ def cleanup(client, affected: Iterable[User] | None = None):
         for ship in user.ships:
             queued_updates[ship.name].extend(ship.updates)
 
-        for ship in user.ships:
-            ship.updates = queued_updates[ship.name]
+        for ship_name, qupdates in queued_updates.items():
+            ships[ship_name].updates = qupdates
+            ships[ship_name].hours = sum(update.hours for update in qupdates)
 
         user.ships = list(ships.values())
         updates.append((user.id, user.ships))

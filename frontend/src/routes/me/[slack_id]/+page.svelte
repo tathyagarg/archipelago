@@ -26,6 +26,8 @@
   const biggest_ship = data.user.ships.reduce((a: any, b: any) =>
     a.hours > b.hours ? a : b,
   );
+
+  console.log(data.user.ships);
 </script>
 
 <div id="page">
