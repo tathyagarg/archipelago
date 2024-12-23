@@ -1,10 +1,14 @@
 import type { PageServerLoad } from './$types';
 
+const PROD = false;
+const USER_EP = PROD ? 'https://archipelago-api.tathya.hackclub.app/me' : 'http://localhost:8000/me';
+const ISLAND_EP = PROD ? 'https://archipelago-api.tathya.hackclub.app/island' : 'http://localhost:8000/island';
+
 export const load: PageServerLoad = async ({ params }) => {
-	const res = await fetch(`https://archipelago-api.tathya.hackclub.app/me?user_id=${params.slack_id}`);
+	const res = await fetch(`${USER_EP}?user_id=${params.slack_id}`);
 	const data = await res.json();
 
-	const img_res = await fetch(`https://archipelago-api.tathya.hackclub.app/island?user_id=${params.slack_id}`);
+	const img_res = await fetch(`${ISLAND_EP}?user_id=${params.slack_id}`);
 	const img_data = await img_res.json();
 
 	return { user: data, island: img_data };

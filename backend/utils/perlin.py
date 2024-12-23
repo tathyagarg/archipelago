@@ -62,13 +62,13 @@ class Perlin:
             noise_value = (self.noise(nx / 2, ny / 2) - 2 * distance) + (
                 0.5 * self.noise(nx * 3, ny * 3) - distance
             )
-            row[x] = ((noise_value + 1) / 2) > 0.1
+            row[x] = int(((noise_value + 1) / 2) > 0.1)
         return row
 
-    def island(self, width: int = 600, height: int = 600) -> list[list[int]]:
+    def island(self, width: int = 300, height: int = 300) -> list[list[int]]:
         center_x, center_y = width / 2, height / 2
         max_distance = math.sqrt(center_x**2 + center_y**2)
-        size = 200
+        size = 75
 
         noise = []
         for y in range(height):
@@ -76,4 +76,5 @@ class Perlin:
                 self._noise_row(y, width, size, center_x, center_y, max_distance)
             )
 
+        print(noise)
         return noise

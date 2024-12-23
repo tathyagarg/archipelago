@@ -8,8 +8,8 @@
   onMount(() => {
     const canvas = document.getElementById("noise") as HTMLCanvasElement;
     const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
-    canvas.width = 600;
-    canvas.height = 600;
+    canvas.width = 300;
+    canvas.height = 300;
 
     const image_data = data.island;
     for (let i = 0; i < image_data.length; i++) {
