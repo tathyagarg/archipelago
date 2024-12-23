@@ -4,13 +4,13 @@ from contextlib import asynccontextmanager
 
 import data_processing
 import dotenv
-from cachetools import TTLCache
-from cachetools_async import cached
-from database import cleanup, connect, load_from_database
+from cachetools import TTLCache  # pyright: ignore
+from cachetools_async import cached  # pyright: ignore
+from database import connect, load_from_database
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
-from fastapi_utils.tasks import repeat_every
-from models import User
+from fastapi_utils.tasks import repeat_every  # pyright: ignore
+from models import Update, User
 from utils import perlin
 
 dotenv.load_dotenv()
@@ -28,7 +28,7 @@ async def lifespan(_: FastAPI):
     mongo_client = connect(os.getenv("MONGO_CONN", ""), os.getenv("MONGO_PASSWORD", ""))
     if LOAD_DATA:
         data_processing.startup(mongo_client)
-    user_data = {u.id: u for u in load_from_database(mongo_client)}
+    user_data = load_from_database(mongo_client)
 
     await update_data()
 
@@ -47,15 +47,16 @@ async def get_users(page: int = 0):
 @repeat_every(seconds=INTERVAL)
 async def update_data():
     global user_data
-    new_users: dict[str, User] = {}
+    new_users: dict[str, dict[str, User | dict[str, list[Update]]]] = {}
     for chunk in data_processing.load_messages(
         10000, oldest=int(time.time()) - INTERVAL
     ):
-        data_processing.load(chunk, None, new_users)
-        data_processing.handle_new_data(mongo_client, new_users.values())
+        data_processing.load(chunk, new_users)
+        data_processing.handle_new_data(mongo_client, new_users)
 
-    cleanup(mongo_client, new_users.values())
-    user_data.update({u.id: u for u in new_users.values()})
+    user_data.update(
+        {uid: user["user"] for uid, user in new_users.items()}  # pyright: ignore
+    )
 
 
 @app.get("/me")
@@ -69,15 +70,6 @@ async def get_user_data(user_id: str):
 async def get_island_data(user_id: str):
     # Slack user IDs are alnums, so we can decode them from base 36
     return perlin.Perlin(seed=int(user_id[1:], 36)).island()
-
-
-@app.get("/force-cleanup")
-async def force_cleanup(password: str):
-    if password == os.getenv("MONGO_PASSWORD"):
-        cleanup(mongo_client)
-        return {"ok": True}
-
-    return {"ok": False, "error": "Invalid password"}
 
 
 @app.get("/auth")

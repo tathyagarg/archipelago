@@ -6,7 +6,7 @@ import dotenv
 # I know what's entering the namespace so it's fine to use wildcard import
 from database import *
 from models import *
-from slack_sdk import WebClient
+from slack_sdk import WebClient  # pyright: ignore
 
 dotenv.load_dotenv(override=True)
 
@@ -28,13 +28,13 @@ else:
     CHANNEL = "C07UA18MXBJ"
     LIMIT = 5000
 
-cache: dict[str, User] = {}  # For loading
+cache: dict[str, dict[str, User | dict[str, list[Update]]]] = {}  # For loading
 user_cache: dict[str, dict] = {}
 
 
 def load_messages(
     left: int, oldest: int = 0, cursor: str | None = None
-) -> Generator[list[dict], None, list]:
+) -> Generator[list[dict], None, list[dict]]:  # pyright: ignore
     print(f"Loading {left} messages")
     if left <= 0:
         return []
@@ -50,7 +50,7 @@ def load_messages(
     )
 
     # To filter out messages from people other than Arrpheus
-    usable = []
+    usable: list[dict] = []
     for message in result["messages"]:
         if message["user"] == ARRPHEUS:
             usable.append(message)
@@ -67,120 +67,87 @@ def load_messages(
         return []
 
 
-def make_ship(ship: dict) -> Generator[tuple[str, str | Ship], Ship | None, None]:
+def make_ship(ship: dict) -> tuple[str, str, Ship | Update]:
     ship_text = ship["blocks"][0]["text"]["text"]
     ship_img = ship["blocks"][1]["image_url"]
 
     match = re.match(
-        r"\*(.+)\*( _\(Update (\d+)\)_)?\nBy <\@U(\w+)> \| <(.+)\|Repo> \| <(.+)\|Demo>\nMade in (\d+) hours( _\((\d+) in total\)_\n\n_Update Description:_ (.+))?",
+        r"\*(.+)\*(?: _\(Update \d+\)\_)?\nBy <@U(\w+)> \| <(.*)\|Repo> \| <(.*)\|Demo>\nMade in (\d+) hours(?: _\(.*\)_)?(?:\n\n_Update Description:_ (.+))?",
         ship_text,
     )
+
     if not match:
         raise ValueError(f"Invalid ship message: {ship_text}")
 
     groups = match.groups()
+    ship_name, user_id, repo, demo, hours, description = groups
+    hours = int(hours)
 
-    if groups[1] is None:
-        ship_name, _, _, user_id, repo, demo, hours, _, _, _ = groups
-        hours = int(hours)
-
-        yield (
+    if description is None:  # Original ship
+        return (
             user_id,
-            Ship(name=ship_name, repo=repo, demo=demo, preview=ship_img, hours=hours),
+            ship_name,
+            Ship(
+                name=ship_name,
+                repo=repo,
+                demo=demo,
+                preview=ship_img,
+                hours=hours,
+                updates=[],
+            ),
         )
     else:
-        ship_name, _, _, user_id, repo, demo, hours, _, _, description = groups
-        description = description or ""
-        hours = int(hours)
-
-        original_ship = yield (user_id, ship_name)
-
-        # Original Ship was not found
-        if not original_ship:
-            yield (
-                user_id,
-                Ship(
-                    name=ship_name,
-                    repo=repo,
-                    demo=demo,
-                    preview=ship_img,
-                    hours=hours,
-                    updates=[Update(description=description, hours=hours)],
-                ),
-            )
-        else:
-            yield (
-                user_id,
-                Ship(
-                    name=original_ship.name,
-                    repo=original_ship.repo,
-                    demo=original_ship.demo,
-                    preview=original_ship.preview,
-                    hours=original_ship.hours,
-                    updates=[Update(description=description, hours=hours)]
-                    + original_ship.updates,
-                ),
-            )
+        return (
+            user_id,
+            ship_name,
+            Update(
+                description=description,
+                hours=hours,
+            ),
+        )
 
 
-def get_username(user_id: str) -> str:
-    # `U + user_id` is the format Slack uses
-    # Since we know all the user_ids will be for users, we can skip storing the first letter (U).
-    if user_id in user_cache:
-        return user_cache[user_id]["display_name"]
-    result = client.users_profile_get(user="U" + user_id)
-    user_cache[user_id] = result["profile"]
-    return result["profile"]["display_name"]
-
-
-def load(data, log_buf, cache):
-    for i, ship_message in enumerate(data):
-        print(f"Loading ship {i + 1}/{len(data)}", end="\r")
-        try:
-            ship_gen = make_ship(ship_message)
-            ship_data = next(ship_gen)
-        except ValueError:
-            log_buf.write(
-                f"Invalid ship message: {ship_message['blocks'][0]['text']['text']}\n"
-            )
+def load(data, cache: dict[str, dict[str, User | dict[str, list[Update]]]]):
+    """
+    data: The response from slack from endpoint converstaions_history
+    """
+    for i, message in enumerate(data):
+        print(f"{i}/{len(data)}", end="\r")
+        if message["user"] != ARRPHEUS:  # Ensure we have a arrpheus message
             continue
 
-        if isinstance(ship_data[1], str):
-            user_id, ship_name = ship_data
-            user = cache.get(user_id, None)
-            if user is None:
-                user = User(id=user_id, name=get_username(user_id), ships=[])
+        try:
+            uid, ship_name, res = make_ship(message)
+        except ValueError:
+            continue  # Womp womp
 
-            user_ships = user.ships
+        if uid not in cache:
+            cache[uid] = {
+                "user": User(id=uid, ships=[]),
+                "updates": {},
+            }
 
-            original_ship = None
-            for ship in user_ships:
-                if ship.name == ship_name:
-                    original_ship = ship
-                    break
+        user = cache[uid]["user"]
 
-            _, ship = ship_gen.send(original_ship)
+        if isinstance(res, Ship):
+            if ship_name in cache[uid]["updates"]:  # pyright: ignore
+                res.updates.extend(cache[uid]["updates"][ship_name])  # pyright: ignore
+                del cache[uid]["updates"][ship_name]  # pyright: ignore
 
-            if user_id not in cache:
-                cache[user_id] = User(id=user_id, name=get_username(user_id), ships=[])
-            cache[user_id].ships.append(ship)  # pyright: ignore
+            user.ships.append(res)  # pyright: ignore
         else:
-            user_id, ship = ship_data
+            if ship_name not in cache[uid]["updates"]:  # pyright: ignore
+                cache[uid]["updates"][ship_name] = []  # pyright: ignore
 
-            if user_id not in cache:
-                cache[user_id] = User(id=user_id, name=get_username(user_id), ships=[])
-            cache[user_id].ships.append(ship)  # pyright: ignore
-
-    print()
+            cache[uid]["updates"][ship_name].append(res)  # pyright: ignore
 
 
 def startup(mongo_client):
     global cache
-    with open("logs", "a") as log_buf:
-        for chunk in load_messages(LIMIT):
-            load(chunk, log_buf, cache)
-            handle_new_data(mongo_client, cache.values())
-            cache = {}
+    for chunk in load_messages(LIMIT):
+        load(chunk, cache)
+
+    handle_new_data(mongo_client, cache)
 
 
 def auth_user(code: str):
@@ -200,5 +167,5 @@ def get_user(user_id: str):
 
 if __name__ == "__main__":
     mongo_client = connect(os.getenv("MONGO_CONN", ""), os.getenv("MONGO_PASSWORD", ""))
-    # startup(mongo_client)
-    cleanup(mongo_client)
+    startup(mongo_client)
+    # cleanup(mongo_client)

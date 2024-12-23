@@ -23,5 +23,4 @@ class Ship(BaseModel):
 
 class User(BaseModel):
     id: str  # Slack User ID
-    name: str
     ships: list[Ship] = []
