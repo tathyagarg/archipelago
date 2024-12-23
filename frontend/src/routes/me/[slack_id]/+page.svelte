@@ -23,18 +23,39 @@
     }
   });
 
-  const biggest_ship = data.user.ships.reduce((a: any, b: any) =>
-    a.hours > b.hours ? a : b,
-  );
+  let times = new Map();
+  for (let i = 0; i < data.user.ships.length; i++) {
+    times.set(data.user.ships[i].name, data.user.ships[i].hours);
+    for (let j = 0; j < data.user.ships[i].updates.length; j++) {
+      times.set(
+        data.user.ships[i].name,
+        times.get(data.user.ships[i].name) +
+          data.user.ships[i].updates[j].hours,
+      );
+    }
+  }
+
+  let biggest_ship = { name: "", hours: 0 };
+  for (const [key, val] of times) {
+    if (val > biggest_ship.hours) {
+      biggest_ship = { name: key, hours: val };
+    }
+  }
 
   console.log(data.user.ships);
 </script>
 
 <div id="page">
   <div id="sidebar">
-    <img src={data.all.image_192} alt="{data.user.name}'s PFP" id="pfp" />
+    <div id="pfp-holder">
+      <img
+        src={data.all.image_192}
+        alt="{data.all.display_name}'s PFP"
+        id="pfp"
+      />
+    </div>
     <div id="namebar">
-      <h1>{data.user.name}</h1>
+      <h1>{data.all.display_name}</h1>
       <a href="https://hackclub.slack.com/team/U{data.user.id}">
         <img
           src="https://cdn-icons-png.flaticon.com/512/2111/2111615.png"
@@ -61,7 +82,7 @@
   </div>
   <div id="seas">
     <canvas id="noise"></canvas>
-    <h1 id="title">{data.user.name}'s Island</h1>
+    <h1 id="title">{data.all.display_name}'s Island</h1>
   </div>
 </div>
 
@@ -71,6 +92,12 @@
     --land: #359b0b;
 
     --base: #24273a;
+  }
+
+  #pfp-holder {
+    width: 100%;
+    display: flex;
+    justify-content: center;
   }
 
   #page {
@@ -88,10 +115,6 @@
     & > a > img {
       margin: 0.67em;
     }
-  }
-
-  #pfp {
-    margin: 0 21%;
   }
 
   #sidebar {

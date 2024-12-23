@@ -75,7 +75,7 @@ def handle_new_data(client, data: dict[str, dict[str, User | dict[str, list[Upda
     for uid, user_data in data.items():
         user: User = user_data["user"]  # pyright: ignore
         if user.id in present_users:  # pyright: ignore
-            present_users[uid].ships.extend(user.ships)
+            user.ships.extend(user.ships)
             updated_users[uid] = user
         else:
             new_users.append(user)
