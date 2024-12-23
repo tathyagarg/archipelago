@@ -76,5 +76,4 @@ class Perlin:
                 self._noise_row(y, width, size, center_x, center_y, max_distance)
             )
 
-        print(noise)
         return noise
