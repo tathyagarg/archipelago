@@ -15,7 +15,7 @@
     for (let i = 0; i < image_data.length; i++) {
       for (let j = 0; j < image_data[i].length; j++) {
         ctx.fillStyle = image_data[i][j] === 1 ? "black" : "white";
-        ctx.fillRect(j, i, 1, 1);
+        ctx.fillRect(i, j, 1, 1);
       }
     }
   });

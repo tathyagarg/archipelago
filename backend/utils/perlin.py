@@ -71,15 +71,9 @@ class Perlin:
         size = 200
 
         noise = []
-        with ThreadPoolExecutor() as executor:
-            futures = [
-                executor.submit(
-                    self._noise_row, y, width, size, center_x, center_y, max_distance
-                )
-                for y in range(height)
-            ]
-
-            for future in as_completed(futures):
-                noise.append(future.result())
+        for y in range(height):
+            noise.append(
+                self._noise_row(y, width, size, center_x, center_y, max_distance)
+            )
 
         return noise
