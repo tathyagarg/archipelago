@@ -1,20 +1,20 @@
 import math
 import random
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 class Perlin:
     def __init__(self, seed: int):
         self.seed = seed
         self.gradients = {}
-
-    def _random_gradient(self, x: float, y: float) -> tuple[float, float]:
         random.seed(self.seed)
 
+    def _random_gradient(self, x: float, y: float) -> tuple[float, float]:
         key = (x, y)
         if self.gradients.get(key) is not None:
             return self.gradients[key]
 
-        angle = random.uniform(0, 2 * 3.14159)
+        angle = random.uniform(0, 2 * math.pi)
         self.gradients[key] = (math.cos(angle), math.sin(angle))
 
         return self.gradients[key]
@@ -50,24 +50,36 @@ class Perlin:
 
         return self._lerp(ix0, ix1, sy)
 
+    def _noise_row(self, y, width, size, center_x, center_y, max_distance):
+        row = [0] * width
+        for x in range(width):
+            nx = x / size
+            ny = y / size
+
+            distance = (
+                math.sqrt((x - center_x) ** 2 + (y - center_y) ** 2) / max_distance
+            )
+            noise_value = (self.noise(nx / 2, ny / 2) - 2 * distance) + (
+                0.5 * self.noise(nx * 3, ny * 3) - distance
+            )
+            row[x] = ((noise_value + 1) / 2) > 0.1
+        return row
+
     def island(self, width: int = 600, height: int = 600) -> list[list[int]]:
         center_x, center_y = width / 2, height / 2
         max_distance = math.sqrt(center_x**2 + center_y**2)
-        noise = [[0 for _ in range(width)] for _ in range(height)]
         size = 200
 
-        for y in range(height):
-            for x in range(width):
-                nx = x / size
-                ny = y / size
-                distance = (
-                    math.sqrt((x - center_x) ** 2 + (y - center_y) ** 2) / max_distance
+        noise = []
+        with ThreadPoolExecutor() as executor:
+            futures = [
+                executor.submit(
+                    self._noise_row, y, width, size, center_x, center_y, max_distance
                 )
+                for y in range(height)
+            ]
 
-                noise_value = (self.noise(nx / 2, ny / 2) - (2 * distance)) + (
-                    (0.5 * self.noise(nx * 3, ny * 3)) - distance
-                )
-
-                noise[y][x] = ((noise_value + 1) / 2) > 0.1
+            for future in as_completed(futures):
+                noise.append(future.result())
 
         return noise

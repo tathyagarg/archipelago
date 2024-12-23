@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 import data_processing
 import dotenv
+from cachetools import TTLCache, cached
 from database import cleanup, connect, load_from_database
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
@@ -17,6 +18,8 @@ user_data = {}
 
 INTERVAL = 60 * 30  # 30 minutes
 LOAD_DATA = False
+
+island_cache = TTLCache(maxsize=100, ttl=60 * 30)
 
 
 @asynccontextmanager
@@ -61,6 +64,7 @@ async def get_user_data(user_id: str):
 
 
 @app.get("/island")
+@cached(island_cache, key=lambda user_id: user_id)
 async def get_island_data(user_id: str):
     # Slack user IDs are alnums, so we can decode them from base 36
     return perlin.Perlin(seed=int(user_id[1:], 36)).island()
