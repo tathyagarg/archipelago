@@ -1,9 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import type { PageData } from "./$types";
   import "../../../app.css";
 
-  let { data }: { data: PageData } = $props();
+  let { data }: { data: any } = $props();
   console.log(data);
 
   const SEAS = "#00000000";
@@ -23,6 +22,10 @@
       }
     }
   });
+
+  const biggest_ship = data.user.ships.reduce((a: any, b: any) =>
+    a.hours > b.hours ? a : b,
+  );
 </script>
 
 <div id="page">
@@ -44,6 +47,12 @@
         <tr>
           <td>Ships made</td>
           <td>{data.user.ships.length}</td>
+        </tr>
+        <tr>
+          <td>Biggest ship</td>
+          <td>
+            {biggest_ship.name} ({biggest_ship.hours} hours)
+          </td>
         </tr>
       </tbody>
     </table>

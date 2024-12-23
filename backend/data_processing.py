@@ -3,7 +3,6 @@ import re
 from typing import Generator
 
 import dotenv
-
 # I know what's entering the namespace so it's fine to use wildcard import
 from database import *
 from models import *
@@ -201,5 +200,5 @@ def get_user(user_id: str):
 
 if __name__ == "__main__":
     mongo_client = connect(os.getenv("MONGO_CONN", ""), os.getenv("MONGO_PASSWORD", ""))
-    startup(mongo_client)
+    # startup(mongo_client)
     cleanup(mongo_client)

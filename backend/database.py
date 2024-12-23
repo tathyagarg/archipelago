@@ -1,3 +1,4 @@
+from collections import defaultdict
 from typing import Iterable
 
 from models import *
@@ -89,45 +90,33 @@ def handle_new_data(client, data: Iterable[User]):
 
 
 def cleanup(client, affected: Iterable[User] | None = None):
-    users = load_from_database(client)
-    new_users = []
-    length = len(users)
-    target = affected or users
-    ids = [user.id for user in target]
+    target = affected or load_from_database(client)
+    updates: list[tuple[str, list[Ship]]] = []
 
-    for user in users:
-        if user.id not in ids:
-            continue
+    for user in target:
+        ships: dict[str, Ship] = {}
+        queued_updates: dict[str, list[Update]] = defaultdict(list)
+        # print(user.ships)
+        for ship in user.ships:
+            if len(ship.updates) == 0:
+                ships[ship.name] = ship
 
-        if affected is None:
-            target_user = user
-        else:
-            target_user = next((u for u in target if u.id == user.id))
+        for ship in user.ships:
+            queued_updates[ship.name].extend(ship.updates)
 
-        seen_ships = {}
-        for ship in user.ships + target_user.ships:
-            ship.updates = list(set(ship.updates))
-            if ship.name not in seen_ships:
-                seen_ships[ship.name] = ship
-            else:
-                for name, seen_ship in seen_ships.items():
-                    if name == ship.name:
-                        if len(ship.updates) == 0:
-                            break
-                        seen_ship.hours += ship.hours
-                        seen_ship.updates += ship.updates
-                        break
+        for ship in user.ships:
+            ship.updates = queued_updates[ship.name]
 
-        user.ships = list(seen_ships.values())
-        new_users.append(user)
+        user.ships = list(ships.values())
+        updates.append((user.id, user.ships))
 
-    def updates(_client, session):
-        for i, user in enumerate(new_users):
-            print("Cleaned up {}/{}".format(i + 1, length))
-            hard_update(_client, user.id, user.ships, session=session)
+    def make_updates(session):
+        for i, (user_id, ships) in enumerate(updates):
+            print(f"Updating user {i + 1}/{len(updates)}", end="\r")
+            hard_update(client, user_id, ships, session=session)
 
     with client.start_session() as session:
-        updates(
-            client,
-            session=session,
-        )
+        try:
+            session.with_transaction(make_updates)
+        except Exception as e:
+            raise Exception("Cleanup failed") from e
