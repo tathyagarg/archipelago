@@ -10,6 +10,7 @@ from database import cleanup, connect, load_from_database
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 from fastapi_utils.tasks import repeat_every
+from models import User
 from utils import perlin
 
 dotenv.load_dotenv()
@@ -46,7 +47,7 @@ async def get_users(page: int = 0):
 @repeat_every(seconds=INTERVAL)
 async def update_data():
     global user_data
-    new_users = {}
+    new_users: dict[str, User] = {}
     for chunk in data_processing.load_messages(
         10000, oldest=int(time.time()) - INTERVAL
     ):
@@ -54,6 +55,7 @@ async def update_data():
         data_processing.handle_new_data(mongo_client, new_users.values())
 
     cleanup(mongo_client, new_users.values())
+    user_data.update({u.id: u for u in new_users.values()})
 
 
 @app.get("/me")
@@ -84,3 +86,8 @@ async def auth_user(code: str):
     return RedirectResponse(
         f'https://archipelago.tathya.hackclub.app?tok={data["id_token"]}'
     )
+
+
+@app.get("/slack")
+async def get_pfp(user_id: str):
+    return data_processing.get_user(user_id)

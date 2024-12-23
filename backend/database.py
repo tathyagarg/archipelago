@@ -93,10 +93,19 @@ def cleanup(client, affected: Iterable[User] | None = None):
     new_users = []
     length = len(users)
     target = affected or users
+    ids = [user.id for user in target]
 
-    for user in target:
+    for user in users:
+        if user.id not in ids:
+            continue
+
+        if affected is None:
+            target_user = user
+        else:
+            target_user = next((u for u in target if u.id == user.id))
+
         seen_ships = {}
-        for ship in user.ships:
+        for ship in user.ships + target_user.ships:
             ship.updates = list(set(ship.updates))
             if ship.name not in seen_ships:
                 seen_ships[ship.name] = ship

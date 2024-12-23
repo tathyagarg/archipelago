@@ -30,6 +30,7 @@ else:
     LIMIT = 5000
 
 cache: dict[str, User] = {}  # For loading
+user_cache: dict[str, dict] = {}
 
 
 def load_messages(
@@ -57,9 +58,11 @@ def load_messages(
 
     yield usable
     if len(usable) != 0:
+        if result["response_metadata"] is None:
+            return []
         yield from load_messages(
             left=remainder + left - len(usable),
-            cursor=result["response_metadata"]["next_cursor"],
+            cursor=result["response_metadata"].get("next_cursor"),
         )
     else:
         return []
@@ -124,7 +127,10 @@ def make_ship(ship: dict) -> Generator[tuple[str, str | Ship], Ship | None, None
 def get_username(user_id: str) -> str:
     # `U + user_id` is the format Slack uses
     # Since we know all the user_ids will be for users, we can skip storing the first letter (U).
+    if user_id in user_cache:
+        return user_cache[user_id]["display_name"]
     result = client.users_profile_get(user="U" + user_id)
+    user_cache[user_id] = result["profile"]
     return result["profile"]["display_name"]
 
 
@@ -184,7 +190,16 @@ def auth_user(code: str):
     )
 
 
+def get_user(user_id: str):
+    if user_id in user_cache:
+        return user_cache[user_id]
+
+    user = client.users_profile_get(user=user_id)["profile"]
+    user_cache[user_id] = user
+    return user
+
+
 if __name__ == "__main__":
     mongo_client = connect(os.getenv("MONGO_CONN", ""), os.getenv("MONGO_PASSWORD", ""))
-    # startup(mongo_client)
+    startup(mongo_client)
     cleanup(mongo_client)
