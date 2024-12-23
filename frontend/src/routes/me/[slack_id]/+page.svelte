@@ -3,7 +3,6 @@
   import "../../../app.css";
 
   let { data }: { data: any } = $props();
-  console.log(data);
 
   const SEAS = "#00000000";
   const LAND = "#359B0B";
@@ -41,8 +40,6 @@
       biggest_ship = { name: key, hours: val };
     }
   }
-
-  console.log(data.user.ships);
 </script>
 
 <div id="page">
@@ -76,6 +73,10 @@
           <td>
             {biggest_ship.name} ({biggest_ship.hours} hours)
           </td>
+        </tr>
+        <tr>
+          <td>Doubloons</td>
+          <td>{data.user.doubloons === -1 ? "Not found" : data.doubloons}</td>
         </tr>
       </tbody>
     </table>
