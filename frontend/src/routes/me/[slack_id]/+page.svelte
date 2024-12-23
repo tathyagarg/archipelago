@@ -63,6 +63,12 @@
     </div>
     <h2>Stats</h2>
     <table id="stats">
+      <thead>
+        <tr>
+          <td>Stat</td>
+          <td>Value</td>
+        </tr>
+      </thead>
       <tbody>
         <tr>
           <td>Ships made</td>
@@ -76,7 +82,19 @@
         </tr>
         <tr>
           <td>Doubloons</td>
-          <td>{data.user.doubloons === -1 ? "Not found" : data.doubloons}</td>
+          <td
+            >{data.doubloons.current === -1
+              ? "Not found"
+              : data.doubloons.current}</td
+          >
+        </tr>
+        <tr>
+          <td>All time doubloons</td>
+          <td
+            >{data.doubloons.all_time === -1
+              ? "Not found"
+              : data.doubloons.all_time}</td
+          >
         </tr>
       </tbody>
     </table>
@@ -93,12 +111,22 @@
     --land: #359b0b;
 
     --base: #24273a;
+    --base2: #1e2030;
+    --base3: #181926;
+
+    --accent: #8aadf4;
+    --light-accent: #8aadf450;
   }
 
   #pfp-holder {
     width: 100%;
     display: flex;
     justify-content: center;
+  }
+
+  #pfp {
+    border-radius: 10px;
+    box-shadow: 0 0 10px 1px var(--light-accent);
   }
 
   #page {
@@ -151,20 +179,39 @@
   }
 
   #stats {
-    background-color: red;
     width: 100%;
 
-    border: none;
-    border-collapse: collapse;
+    border-spacing: 0 1px;
+    border-collapse: seperate;
+    border-radius: 10px !important;
+    overflow: hidden;
+    box-shadow: 0 0 10px 1px var(--light-accent);
 
     & td {
       width: 50%;
-      padding: 0.5em;
+      padding: 12px 15px;
+      text-align: left;
     }
+  }
 
-    & td:first-child {
-      border-right: 1px solid white;
-    }
+  #stats thead tr {
+    background-color: var(--base3) !important;
+  }
+
+  #stats tr:nth-of-type(odd) {
+    background-color: var(--base2);
+  }
+
+  #stats tr:nth-of-type(even) {
+    background-color: var(--base3);
+  }
+
+  #stats tbody tr {
+    border-bottom: 1px solid var(--base);
+  }
+
+  #stats tbody tr:last-of-type {
+    border-bottom: 2px solid var(--accent);
   }
 
   #title {
