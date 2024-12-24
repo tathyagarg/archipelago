@@ -166,7 +166,7 @@ def get_user(user_id: str):
     return user
 
 
-def cleanup(client, affected=None):
+def cleanup(client, affected: dict[str, User] | None = None):
     target = affected or load_from_database(mongo_client)
 
     for user in target.values():

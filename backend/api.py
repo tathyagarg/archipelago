@@ -44,7 +44,7 @@ async def get_users(page: int = 0):
     return {"users": list(user_data)[page * 10 : min((page + 1) * 10, len(user_data))]}
 
 
-@repeat_every(seconds=INTERVAL)
+# @repeat_every(seconds=INTERVAL)
 async def update_data():
     global user_data
     new_users: dict[str, dict[str, User | dict[str, list[Update]]]] = {}
@@ -54,9 +54,10 @@ async def update_data():
         data_processing.load(chunk, new_users)
         data_processing.handle_new_data(mongo_client, new_users)
 
-    user_data.update(
-        {uid: user["user"] for uid, user in new_users.items()}  # pyright: ignore
-    )
+    fixed_users = {uid: user["user"] for uid, user in new_users.items()}
+    data_processing.cleanup(mongo_client, fixed_users)  # pyright: ignore
+
+    user_data.update(fixed_users)  # pyright: ignore
 
 
 @app.get("/me")
