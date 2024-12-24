@@ -178,6 +178,7 @@ def cleanup(client, affected: dict[str, User] | None = None):
                 res_ships[ship.name] = ship
 
         user.ships = list(res_ships.values())
+        target[uid] = user
 
     big_update(client, target)
 
