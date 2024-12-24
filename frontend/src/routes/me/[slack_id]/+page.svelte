@@ -73,7 +73,7 @@
     </div>
     <div id="namebar">
       <h1>{data.all.display_name}</h1>
-      <a href="https://hackclub.slack.com/team/U{data.user.id}">
+      <a href="https://hackclub.slack.com/team/{data.user.id}">
         <img
           src="https://cdn-icons-png.flaticon.com/512/2111/2111615.png"
           alt="slack logo"
