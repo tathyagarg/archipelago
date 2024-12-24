@@ -133,13 +133,14 @@ def load(data, cache: dict[str, dict[str, User | dict[str, list[Update]]]]):
             if ship_name in cache[uid]["updates"]:  # pyright: ignore
                 res.updates.extend(cache[uid]["updates"][ship_name])  # pyright: ignore
                 del cache[uid]["updates"][ship_name]  # pyright: ignore
-
             user.ships.append(res)  # pyright: ignore
         else:
             if ship_name not in cache[uid]["updates"]:  # pyright: ignore
                 cache[uid]["updates"][ship_name] = []  # pyright: ignore
 
             cache[uid]["updates"][ship_name].append(res)  # pyright: ignore
+
+    print()
 
 
 def startup(mongo_client):
@@ -165,7 +166,21 @@ def get_user(user_id: str):
     return user
 
 
+def cleanup(client, affected=None):
+    target = affected or load_from_database(mongo_client)
+
+    for user in target.values():
+        res_ships = {}
+        for ship in user.ships:
+            if ship.name not in res_ships:
+                res_ships[ship.name] = ship
+
+        user.ships = list(res_ships.values())
+
+    big_update(client, target)
+
+
 if __name__ == "__main__":
     mongo_client = connect(os.getenv("MONGO_CONN", ""), os.getenv("MONGO_PASSWORD", ""))
-    startup(mongo_client)
-    # cleanup(mongo_client)
+    # startup(mongo_client)
+    cleanup(mongo_client)
