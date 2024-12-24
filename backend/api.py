@@ -54,8 +54,9 @@ async def update_data():
         data_processing.load(chunk, new_users)
         data_processing.handle_new_data(mongo_client, new_users)
 
+    # print("Cleaning up...")
     fixed_users = {uid: user["user"] for uid, user in new_users.items()}
-    data_processing.cleanup(mongo_client, fixed_users)  # pyright: ignore
+    # data_processing.cleanup(mongo_client, fixed_users)  # pyright: ignore
 
     user_data.update(fixed_users)  # pyright: ignore
 

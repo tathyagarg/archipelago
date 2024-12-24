@@ -86,6 +86,15 @@ def handle_new_data(client, data: dict[str, dict[str, User | dict[str, list[Upda
             )
             ship.updates.extend(updates)
 
+    for user_id in data:
+        user = present_users[user_id]
+        actual_ships = {}
+        for ship in user.ships:
+            if ship.name not in actual_ships:
+                actual_ships[ship.name] = ship
+
+        user.ships = list(actual_ships.values())
+
     if updated_users:
         big_update(client, updated_users)
     if new_users:
