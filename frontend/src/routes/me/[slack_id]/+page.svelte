@@ -2,6 +2,10 @@
   import { onMount } from "svelte";
   import "../../../app.css";
 
+  import big_shipper from "$lib/badges/big_shipper.png";
+  import really_big_shipper from "$lib/badges/really_big_shipper.png";
+  import ship_happy from "$lib/badges/ship_happy.png";
+
   let { data }: { data: any } = $props();
 
   const SEAS = "#00000000";
@@ -40,6 +44,22 @@
       biggest_ship = { name: key, hours: val };
     }
   }
+
+  let badges = new Map();
+  if (biggest_ship.hours >= 20) {
+    badges.set("Big Shipper (Shipped a project with 20+ hours)", big_shipper);
+  }
+
+  if (biggest_ship.hours >= 50) {
+    badges.set(
+      "Really Big Shipper (Shipped a project with 50+ hours)",
+      really_big_shipper,
+    );
+  }
+
+  if (data.user.ships.length >= 10) {
+    badges.set("Ship happy (Shipped 10+ projects)", ship_happy);
+  }
 </script>
 
 <div id="page">
@@ -60,6 +80,14 @@
           height="30"
         />
       </a>
+    </div>
+    <h2>Badges</h2>
+    <div id="badges">
+      {#each badges as badge}
+        <figure title={badge[0]}>
+          <img src={badge[1]} alt={badge[0]} height="70" />
+        </figure>
+      {/each}
     </div>
     <h2>Stats</h2>
     <table id="stats">
@@ -116,6 +144,39 @@
 
     --accent: #8aadf4;
     --light-accent: #8aadf450;
+  }
+
+  #badges {
+    height: 70px;
+    display: flex;
+    align-items: center;
+    gap: 1em;
+    position: relative;
+  }
+
+  figure {
+    position: relative;
+    display: block;
+    overflow: hidden;
+    margin: 0;
+    height: 100%;
+    display: flex;
+    align-items: start;
+  }
+
+  figcaption {
+    position: absolute;
+    top: 70%;
+    text-align: center;
+    width: 100%;
+    font-size: 10px;
+
+    opacity: 0;
+    transition: opacity 0.1s;
+  }
+
+  figure:hover figcaption {
+    opacity: 1;
   }
 
   #pfp-holder {
@@ -194,8 +255,9 @@
     }
   }
 
-  #stats thead tr {
+  #stats thead tr td {
     background-color: var(--base3) !important;
+    border-bottom: 2px solid var(--accent) !important;
   }
 
   #stats tr:nth-of-type(odd) {
@@ -208,10 +270,6 @@
 
   #stats tbody tr {
     border-bottom: 1px solid var(--base);
-  }
-
-  #stats tbody tr:last-of-type {
-    border-bottom: 2px solid var(--accent);
   }
 
   #title {

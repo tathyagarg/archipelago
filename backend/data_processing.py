@@ -1,189 +1,243 @@
+import json
 import os
 import re
-from typing import Generator
+import traceback
+from collections import defaultdict
 
+import database
 import dotenv
-# I know what's entering the namespace so it's fine to use wildcard import
-from database import *
+import slack_sdk as slack  # pyright: ignore
 from models import *
-from slack_sdk import WebClient  # pyright: ignore
 
-dotenv.load_dotenv(override=True)
+dotenv.load_dotenv()
+env = os.getenv
 
-ARRPHEUS = "U07NGBJUDRD"
+client = slack.WebClient(env("SLACK_TOKEN"))
 
-TOKEN = os.getenv("SLACK_TOKEN")
-DEBUG = int(os.getenv("DEBUG", "1"))
+# Number of ships we want
+LIMIT = 10_000
+CHANNEL = "C07UA18MXBJ"  # #high-seas-ships channel
+ARRPHEUS = "U07NGBJUDRD"  # Arrpheus' user ID
+UNMATCHED_PATH = ".data/unmatched_updates.json"
 
-SLACK_CLIENT_ID = os.getenv("SLACK_CLIENT_ID")
-SLACK_CLIENT_SECRET = os.getenv("SLACK_CLIENT_SECRET")
-
-client = WebClient(token=TOKEN)
-
-# ifdef ahh
-if DEBUG:
-    CHANNEL = "C086HKQFLHF"
-    LIMIT = 2
-else:
-    CHANNEL = "C07UA18MXBJ"
-    LIMIT = 5000
-
-cache: dict[str, dict[str, User | dict[str, list[Update]]]] = {}  # For loading
-user_cache: dict[str, dict] = {}
+PER_PAGE = 999  # Slack recommends no more than 200 results at a time
+SLACK_CLIENT_ID = env("SLACK_CLIENT_ID")
+SLACK_CLIENT_SECRET = env("SLACK_CLIENT_SECRET")
 
 
-def load_messages(
-    left: int, oldest: int = 0, cursor: str | None = None
-) -> Generator[list[dict], None, list[dict]]:  # pyright: ignore
-    print(f"Loading {left} messages")
-    if left <= 0:
-        return []
+def process_message(message: dict) -> tuple[str, str, Ship | Update] | None:
+    """
+    Processes a message and returns a tuple containing the ship name, author id and a corresponding ship or update.
+    Returns None if the message is not a ship message (for whatever reason).
+    """
+    if message["text"] != "*_SHIPS AHOY!!_*":
+        return
 
-    # The converstaions_history API has a limit of 999 messages per call
-    remainder = 0
-    if left > 999:
-        remainder = left - 999
-        left = 999
+    blocks = message.get("blocks", None)
+    if not blocks:
+        return
 
-    result = client.conversations_history(
-        channel=CHANNEL, oldest=oldest, limit=left, cursor=cursor
-    )
-
-    # To filter out messages from people other than Arrpheus
-    usable: list[dict] = []
-    for message in result["messages"]:
-        if message["user"] == ARRPHEUS:
-            usable.append(message)
-
-    yield usable
-    if len(usable) != 0:
-        if result["response_metadata"] is None:
-            return []
-        yield from load_messages(
-            left=remainder + left - len(usable),
-            cursor=result["response_metadata"].get("next_cursor"),
-        )
+    if len(blocks) == 2:
+        main_content_block, preview_block = blocks
+        preview = preview_block["image_url"]
     else:
-        return []
+        main_content_block = blocks[0]
+        preview_container = main_content_block.get("accessory")
+        preview = preview_container["image_url"] if preview_container else ""
 
-
-def make_ship(ship: dict) -> tuple[str, str, Ship | Update]:
-    ship_text = ship["blocks"][0]["text"]["text"]
-    ship_img = ship["blocks"][1]["image_url"]
-
+    # Thank you regex101.com!
     match = re.match(
-        r"\*(.+)\*(?: _\(Update \d+\)\_)?\nBy <@U(\w+)> \| <(.*)\|Repo> \| <(.*)\|Demo>\nMade in (\d+) hours(?: _\(.*\)_)?(?:\n\n_Update Description:_ (.+))?",
-        ship_text,
+        r"\*(.*)\*(?: _\(Update \d+\)_)?\nBy <@(\w+)> \| <(.*)\|Repo> \| <(.*)\|Demo>\nMade in (\d+) hours?(?: _\(\d+ in total\)_\n\n_Update Description:_ (.+))?",
+        main_content_block["text"]["text"],
     )
-
     if not match:
-        raise ValueError(f"Invalid ship message: {ship_text}")
+        return None
 
-    groups = match.groups()
-    ship_name, user_id, repo, demo, hours, description = groups
+    ship_name, author_id, repo, demo, hours, update_description = match.groups()
     hours = int(hours)
 
-    if description is None:  # Original ship
-        return (
-            user_id,
-            ship_name,
-            Ship(
-                name=ship_name,
-                repo=repo,
-                demo=demo,
-                preview=ship_img,
-                hours=hours,
-                updates=[],
-            ),
-        )
+    if update_description:
+        update = Update(description=update_description, hours=int(hours))
+        return ship_name, author_id, update
     else:
-        return (
-            user_id,
-            ship_name,
-            Update(
-                description=description,
-                hours=hours,
-            ),
+        ship = Ship(
+            name=ship_name,
+            preview=preview,
+            repo=repo,
+            demo=demo,
+            hours=hours,
+            updates=[],
         )
+        return ship_name, author_id, ship
 
 
-def load(data, cache: dict[str, dict[str, User | dict[str, list[Update]]]]):
+def load_ships(
+    limit: int,
+    unmatched_updates: dict[str, dict[str, list[Update]]],
+    *,
+    oldest: int = 1730419200,
+    cursor: str = "",
+) -> tuple[str, int, dict[str, list[Ship]]]:
     """
-    data: The response from slack from endpoint converstaions_history
+    Loads upto the specified number of ships into the database.
+    Returns the next cursor, number of ships loaded and the queued ship creations.
+
+    Discrepancies between the number of ships loaded and the number of ships stems from the fact that not every message in #high-seas-ships is a ship message from Arrpheus.
+    Returns -1 if an error occurred.
     """
-    for i, message in enumerate(data):
-        print(f"{i}/{len(data)}", end="\r")
-        if message["user"] != ARRPHEUS:  # Ensure we have a arrpheus message
-            continue
+    # Dict of user_id to Ships
+    queued_ship_creations: dict[str, list[Ship]] = defaultdict(list)
+    try:
+        messages_data = client.conversations_history(
+            channel=CHANNEL, limit=limit, oldest=oldest, cursor=cursor
+        )
+        if not messages_data["ok"]:
+            return "", -1, queued_ship_creations
 
-        try:
-            uid, ship_name, res = make_ship(message)
-        except ValueError:
-            continue  # Womp womp
+        messages = messages_data["messages"]
+        processed: int = 0
 
-        if uid not in cache:
-            cache[uid] = {
-                "user": User(id=uid, ships=[]),
-                "updates": {},
+        for message in messages:
+            if message["user"] != ARRPHEUS:
+                continue
+
+            results = process_message(message)
+            if not results:
+                continue
+
+            ship_name, author_id, result = results
+            if not unmatched_updates.get(author_id):
+                unmatched_updates[author_id] = {}
+
+            if not unmatched_updates[author_id].get(ship_name):
+                unmatched_updates[author_id][ship_name] = []
+
+            if isinstance(result, Update):
+                unmatched_updates[author_id][ship_name].append(result)
+            else:
+                result.updates = unmatched_updates[author_id][ship_name]
+                # They not unmatched no mo
+                unmatched_updates[author_id][ship_name] = []
+
+                queued_ship_creations[author_id].append(result)
+            processed += 1
+    except Exception:
+        traceback.print_exc()
+        return "", -1, queued_ship_creations
+
+    try:
+        return (
+            messages_data["response_metadata"]["next_cursor"],
+            processed,
+            queued_ship_creations,
+        )
+    except TypeError:
+        return "", -2, queued_ship_creations
+
+
+class UnmatchedHandler:
+    def __enter__(self):
+        with open(UNMATCHED_PATH) as f:
+            data = json.load(f)
+            self.data = {
+                author_id: {
+                    ship_name: [Update(**ship_update) for ship_update in ship_updates]
+                    for ship_name, ship_updates in ships.items()
+                }
+                for author_id, ships in data.items()
             }
 
-        user = cache[uid]["user"]
+            return self.data
 
-        if isinstance(res, Ship):
-            if ship_name in cache[uid]["updates"]:  # pyright: ignore
-                res.updates.extend(cache[uid]["updates"][ship_name])  # pyright: ignore
-                del cache[uid]["updates"][ship_name]  # pyright: ignore
-            user.ships.append(res)  # pyright: ignore
-        else:
-            if ship_name not in cache[uid]["updates"]:  # pyright: ignore
-                cache[uid]["updates"][ship_name] = []  # pyright: ignore
+    # I'm too cool to handle errors
+    def __exit__(self, *_):
+        with open(UNMATCHED_PATH, "w") as f:
+            data = {
+                author_id: {
+                    ship_name: [
+                        ship_update.model_dump() for ship_update in ship_updates
+                    ]
+                    for ship_name, ship_updates in ships.items()
+                    if ship_updates
+                }
+                for author_id, ships in self.data.items()
+            }
 
-            cache[uid]["updates"][ship_name].append(res)  # pyright: ignore
+            json.dump(
+                {k: v for k, v in data.items() if v},
+                f,
+                indent=4,
+            )
 
-    print()
+
+def bulk_load(limit: int, oldest: int = 0, cursor: str = ""):
+    left = limit
+
+    mongo_client = database.connect()
+    while left > 0:
+        print(left)
+        current = min(left, PER_PAGE)
+        with UnmatchedHandler() as unmatched_updates:
+            next_cursor, loaded, queued_ship_creations = load_ships(
+                current, unmatched_updates, oldest=oldest, cursor=cursor
+            )
+
+        if loaded == -1:
+            # Resilience
+            return
+
+        left -= loaded
+        cursor = next_cursor
+
+        with mongo_client.start_session() as session:
+            session.with_transaction(
+                lambda session: [
+                    database.put(mongo_client, user_id, ships, session)
+                    for user_id, ships in queued_ship_creations.items()
+                ]
+            )
+
+        if loaded == -2:
+            break
+
+    clear_unmatched_updates(mongo_client)
+    mongo_client.close()
 
 
-def startup(mongo_client):
-    global cache
-    for chunk in load_messages(LIMIT):
-        load(chunk, cache)
+def clear_unmatched_updates(mongo_client):
+    queued_fixes: dict[str, list[Ship]] = {}
+    with UnmatchedHandler() as unmatched_updates:
+        for user, ships in unmatched_updates.items():
+            user_data = database.get(mongo_client, user)
+            if not user_data:
+                continue
 
-    handle_new_data(mongo_client, cache)
+            for ship, updates in ships.items():
+                for i, user_ship in enumerate(user_data["ships"]):
+                    if user_ship["name"] == ship:
+
+                        user_data["ships"][i]["updates"].extend(
+                            [update.model_dump() for update in updates]
+                        )
+                        unmatched_updates[user][ship] = []
+
+            queued_fixes[user] = user_data["ships"]
+
+        database.hard_dump(mongo_client, queued_fixes)
 
 
 def auth_user(code: str):
     return client.openid_connect_token(
-        code=code, client_id=SLACK_CLIENT_ID, client_secret=SLACK_CLIENT_SECRET
+        code=code,
+        client_id=SLACK_CLIENT_ID,
+        client_secret=SLACK_CLIENT_SECRET,
     )
 
 
 def get_user(user_id: str):
-    if user_id in user_cache:
-        return user_cache[user_id]
-
-    user = client.users_profile_get(user=user_id)["profile"]
-    user_cache[user_id] = user
-    return user
-
-
-def cleanup(client, affected: dict[str, User] | None = None):
-    db = load_from_database(mongo_client)
-    target = affected or db
-
-    for uid in target.keys():
-        user = db[uid]
-        res_ships = {}
-        for ship in user.ships:
-            if ship.name not in res_ships:
-                res_ships[ship.name] = ship
-
-        user.ships = list(res_ships.values())
-        target[uid] = user
-
-    big_update(client, target)
+    return client.users_profile_get(user=user_id)["profile"]
 
 
 if __name__ == "__main__":
-    mongo_client = connect(os.getenv("MONGO_CONN", ""), os.getenv("MONGO_PASSWORD", ""))
-    startup(mongo_client)
-    cleanup(mongo_client)
+    # bulk_load(LIMIT)
+    clear_unmatched_updates(database.connect())
