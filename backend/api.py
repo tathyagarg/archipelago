@@ -44,7 +44,7 @@ async def get_users(page: int = 0):
     return {"users": list(user_data)[page * 10 : min((page + 1) * 10, len(user_data))]}
 
 
-# @repeat_every(seconds=INTERVAL)
+@repeat_every(seconds=INTERVAL)
 async def update_data():
     global user_data
     new_users: dict[str, dict[str, User | dict[str, list[Update]]]] = {}

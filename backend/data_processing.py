@@ -167,9 +167,11 @@ def get_user(user_id: str):
 
 
 def cleanup(client, affected: dict[str, User] | None = None):
-    target = affected or load_from_database(mongo_client)
+    db = load_from_database(mongo_client)
+    target = affected or db
 
-    for user in target.values():
+    for uid in target.keys():
+        user = db[uid]
         res_ships = {}
         for ship in user.ships:
             if ship.name not in res_ships:
@@ -182,5 +184,5 @@ def cleanup(client, affected: dict[str, User] | None = None):
 
 if __name__ == "__main__":
     mongo_client = connect(os.getenv("MONGO_CONN", ""), os.getenv("MONGO_PASSWORD", ""))
-    # startup(mongo_client)
+    startup(mongo_client)
     cleanup(mongo_client)
