@@ -21,6 +21,7 @@ user_data = {}
 INTERVAL = 60 * 30  # 30 minutes
 LOAD_DATA = False
 
+DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -28,6 +29,9 @@ async def lifespan(_: FastAPI):
     mongo_client = database.connect()
     if LOAD_DATA:
         data_processing.bulk_load(10000)
+
+    if not DEBUG:
+        await update_data()
 
     yield
     mongo_client.close()
@@ -48,6 +52,7 @@ async def update_data():
 
 @app.get("/me")
 async def get_user_data(user_id: str):
+    print(user_id)
     return User(**database.get(mongo_client, user_id)).model_dump()
 
 
@@ -69,3 +74,9 @@ async def auth_user(code: str):
 @app.get("/slack")
 async def get_pfp(user_id: str):
     return data_processing.get_user(user_id)
+
+
+@app.get("/force-cleanup")
+async def force_cleanup():
+    data_processing.clean_duplicate_updates()
+    return {"success": True}

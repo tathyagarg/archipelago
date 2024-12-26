@@ -238,6 +238,20 @@ def get_user(user_id: str):
     return client.users_profile_get(user=user_id)["profile"]
 
 
+def clean_duplicate_updates():
+    mongo_client = database.connect()
+    with mongo_client.start_session() as session:
+        user_data = database.get(mongo_client, ARRPHEUS)
+        for ship in user_data["ships"]:
+            ship["updates"] = list(
+                {update["description"]: update for update in ship["updates"]}.values()
+            )
+        database.hard_dump(
+            mongo_client, {ARRPHEUS: user_data["ships"]}, session=session
+        )
+    mongo_client.close()
+
+
 if __name__ == "__main__":
-    # bulk_load(LIMIT)
-    clear_unmatched_updates(database.connect())
+    bulk_load(LIMIT)
+    # clear_unmatched_updates(database.connect())

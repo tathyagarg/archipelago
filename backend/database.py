@@ -31,12 +31,17 @@ def get(client, user_id):
     db = client["archipelago"]
     collection = db["users"]
 
-    return collection.find_one({"id": user_id})
+    res = collection.find_one({"id": user_id})
+    print(res, user_id)
+
+    return res
 
 
-def hard_dump(client, data: dict[str, list[Ship]]):
+def hard_dump(client, data: dict[str, list[Ship]], session=None):
     db = client["archipelago"]
     collection = db["users"]
 
     for user_id, ships in data.items():
-        collection.update_one({"id": user_id}, {"$set": {"ships": ships}})
+        collection.update_one(
+            {"id": user_id}, {"$set": {"ships": ships}}, session=session
+        )

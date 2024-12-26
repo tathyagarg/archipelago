@@ -1,12 +1,17 @@
 <script lang="ts">
+  let innerWidth = 0;
+  let innerHeight = 0;
+
   import { onMount } from "svelte";
   import "../../../app.css";
 
   import big_shipper from "$lib/badges/big_shipper.png";
   import really_big_shipper from "$lib/badges/really_big_shipper.png";
   import ship_happy from "$lib/badges/ship_happy.png";
+  import update_master from "$lib/badges/update_master.png";
 
   let { data }: { data: any } = $props();
+  console.log(data);
 
   const SEAS = "#00000000";
   const LAND = "#359B0B";
@@ -27,40 +32,47 @@
   });
 
   let times = new Map();
-  for (let i = 0; i < data.user.ships.length; i++) {
-    times.set(data.user.ships[i].name, data.user.ships[i].hours);
-    for (let j = 0; j < data.user.ships[i].updates.length; j++) {
-      times.set(
-        data.user.ships[i].name,
-        times.get(data.user.ships[i].name) +
-          data.user.ships[i].updates[j].hours,
-      );
-    }
-  }
+ for (let i = 0; i < data.user.ships.length; i++) {
+   times.set(data.user.ships[i].name, data.user.ships[i].hours);
+   for (let j = 0; j < data.user.ships[i].updates.length; j++) {
+     times.set(
+       data.user.ships[i].name,
+       times.get(data.user.ships[i].name) +
+         data.user.ships[i].updates[j].hours,
+     );
+   }
+ }
 
-  let biggest_ship = { name: "", hours: 0 };
-  for (const [key, val] of times) {
-    if (val > biggest_ship.hours) {
-      biggest_ship = { name: key, hours: val };
-    }
-  }
+ let biggest_ship = { name: "", hours: 0 };
+ for (const [key, val] of times) {
+   if (val > biggest_ship.hours) {
+     biggest_ship = { name: key, hours: val };
+   }
+ }
 
-  let badges = new Map();
-  if (biggest_ship.hours >= 20) {
-    badges.set("Big Shipper (Shipped a project with 20+ hours)", big_shipper);
-  }
+let badges = new Map();
+if (biggest_ship.hours >= 20) {
+  badges.set("Big Shipper (Shipped a project with 20+ hours)", "🚢");
+}
 
-  if (biggest_ship.hours >= 50) {
-    badges.set(
-      "Really Big Shipper (Shipped a project with 50+ hours)",
-      really_big_shipper,
-    );
-  }
+if (biggest_ship.hours >= 50) {
+  badges.set("Really Big Shipper (Shipped a project with 50+ hours)", "🚀");
+}
 
-  if (data.user.ships.length >= 10) {
-    badges.set("Ship happy (Shipped 10+ projects)", ship_happy);
+if (data.user.ships.length >= 10) {
+  badges.set("Ship happy (Shipped 10+ projects)", "🔫");
+}
+
+for (let ship of data.user.ships) {
+  if (ship.updates.length >= 10) {
+    badges.set("Update Master (Updated a project 10+ times)", "🔨");
   }
+}
+
+let ship_positions = [1, 2];
 </script>
+
+<svelte:window bind:innerWidth bind:innerHeight />
 
 <div id="page">
   <div id="sidebar">
@@ -84,9 +96,9 @@
     <h2>Badges</h2>
     <div id="badges">
       {#each badges as badge}
-        <figure title={badge[0]}>
-          <img src={badge[1]} alt={badge[0]} height="70" />
-        </figure>
+        <div id="badge" title={badge[0]}>
+          <span>{badge[1]}</span>
+        </div>
       {/each}
     </div>
     <h2>Stats</h2>
@@ -130,6 +142,8 @@
   <div id="seas">
     <canvas id="noise"></canvas>
     <h1 id="title">{data.all.display_name}'s Island</h1>
+    <div id="ships">
+    </div>
   </div>
 </div>
 
@@ -146,6 +160,23 @@
     --light-accent: #8aadf450;
   }
 
+  #ships {
+    position: absolute;
+    height: 90%;
+    width: 65%;
+
+    box-sizing: border-box;
+  }
+
+  #ship {
+    position: absolute;
+
+    background-image: url("images/ship.png");
+    background-size: cover;
+    height: 200px;
+    width: 100px;
+  }
+
   #badges {
     height: 70px;
     display: flex;
@@ -154,29 +185,22 @@
     position: relative;
   }
 
-  figure {
+  #badge {
     position: relative;
     display: block;
     overflow: hidden;
     margin: 0;
-    height: 100%;
     display: flex;
     align-items: start;
-  }
+    aspect-ratio: 1;
 
-  figcaption {
-    position: absolute;
-    top: 70%;
-    text-align: center;
-    width: 100%;
-    font-size: 10px;
+    font-size: 2em;
+    background-color: var(--accent);
+    padding: 0.5em;
+    border-radius: 1em;
+    border: 3px solid var(--base3);
 
-    opacity: 0;
-    transition: opacity 0.1s;
-  }
-
-  figure:hover figcaption {
-    opacity: 1;
+    box-shadow: 0 0 10px 1px var(--light-accent);
   }
 
   #pfp-holder {
